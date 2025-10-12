@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ElektraWeb
 
 A modern React application built with TypeScript and Vite. This project provides a fast, scalable foundation for web application development.
@@ -128,3 +129,6 @@ export default defineConfig([
   },
 ])
 ```
+=======
+# ElektraWebProject
+>>>>>>> bfa244bccc81ad39e9035ce8efe2781b83318946
