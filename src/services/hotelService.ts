@@ -1,4 +1,4 @@
-import type { Hotel, Room, HotelSearchResult, SearchParams, SearchFilters, RoomAvailability } from '../types/hotel';
+import type { Hotel, Room, HotelSearchResult, SearchParams, SearchFilters } from '../types/hotel';
 
 // Mock hotel data
 const mockHotels: Hotel[] = [
