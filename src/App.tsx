@@ -1,198 +1,215 @@
-import { useState } from 'react';
-import { SearchForm } from './components/SearchForm';
-import { HotelCard } from './components/HotelCard';
-import { HotelService } from './services/hotelService';
-import type { SearchParams, HotelSearchResult, SearchFilters } from './types/hotel';
+import { useState, useEffect } from 'react';
+import { useAuth } from './contexts/AuthContext';
+import { getHotelInfo, getAvailabilityCalendar, makeReservation, type AvailableDate } from './services/soliHotelService';
+import { AuthForm } from './components/AuthForm';
+import { AdminPanel } from './components/AdminPanel';
 import './App.css';
 
 function App() {
-  const [searchResults, setSearchResults] = useState<HotelSearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [searchFilters, setSearchFilters] = useState<SearchFilters>({
-    priceRange: { min: 0, max: 10000 },
-    starRating: [],
-    amenities: [],
-    sortBy: 'price',
-    sortOrder: 'asc'
-  });
+    const [hotel, setHotel] = useState<any>(null);
+    const [availability, setAvailability] = useState<AvailableDate[]>([]);
+    const [selectedDateRange, setSelectedDateRange] = useState({ checkIn: '', checkOut: '' });
+    const [reservationResult, setReservationResult] = useState<string>('');
+    const [showAuthModal, setShowAuthModal] = useState(false);
+    const [showAdminPanel, setShowAdminPanel] = useState(false);
+    const { user, logout } = useAuth();
 
-  const handleSearch = async (params: SearchParams) => {
-    setIsLoading(true);
-    setHasSearched(true);
+    useEffect(() => {
+        const hotelData = getHotelInfo();
+        setHotel(hotelData);
+        
+        // İlk yüklemede müsaitlik durumunu getir
+        const availabilityData = getAvailabilityCalendar();
+        setAvailability(availabilityData);
+    }, []);
 
-    try {
-      const results = await HotelService.searchHotels(params, searchFilters);
-      setSearchResults(results);
-    } catch (error) {
-      console.error('Arama hatası:', error);
-      alert('Arama sırasında bir hata oluştu. Lütfen tekrar deneyin.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    const handleLoginClick = () => {
+        setShowAuthModal(true);
+    };
 
-  const handleHotelSelect = (hotelId: string) => {
-    console.log('Seçilen otel ID:', hotelId);
-    // Burada otel detay sayfasına yönlendirme yapılabilir
-    alert(`Otel ID ${hotelId} seçildi! (Detay sayfası henüz hazır değil)`);
-  };
+    const handleDateRangeChange = (checkIn: string, checkOut: string) => {
+        setSelectedDateRange({ checkIn, checkOut });
+        setReservationResult(''); // Önceki sonucu temizle
+    };
 
-  const handleFilterChange = async (filters: SearchFilters) => {
-    setSearchFilters(filters);
-    if (hasSearched) {
-      setIsLoading(true);
-      try {
-        // Son arama parametrelerini kullanarak tekrar ara
-        const results = await HotelService.searchHotels(
-          {
-            destination: 'İstanbul',
-            checkIn: '',
-            checkOut: '',
-            adults: 2,
-            children: 0,
-            rooms: 1
-          },
-          filters
+    const handleReservation = () => {
+        if (!user) {
+            alert('Rezervasyon yapmak için giriş yapmalısınız!');
+            handleLoginClick();
+            return;
+        }
+
+        if (!selectedDateRange.checkIn || !selectedDateRange.checkOut) {
+            alert('Lütfen giriş ve çıkış tarihlerini seçin!');
+            return;
+        }
+
+        const result = makeReservation(
+            user.name,
+            selectedDateRange.checkIn,
+            selectedDateRange.checkOut
         );
-        setSearchResults(results);
-      } catch (error) {
-        console.error('Filtreleme hatası:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-  };
+        
+        setReservationResult(result.message);
+        
+        if (result.success) {
+            // Müsaitlik durumunu güncelle
+            const updatedAvailability = getAvailabilityCalendar();
+            setAvailability(updatedAvailability);
+            // Tarih seçimini temizle
+            setSelectedDateRange({ checkIn: '', checkOut: '' });
+        }
+    };
 
-  return (
-    <div className="app">
-      <header className="app-header">
-        <div className="container">
-          <div className="header-content">
-            <h1 className="brand">🏨 ElektraWeb Hotels</h1>
-            <p className="tagline">En iyi otelleri keşfedin</p>
-          </div>
-        </div>
-      </header>
+    const formatDate = (dateStr: string) => {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('tr-TR');
+    };
 
-      <main className="main-content">
-        <div className="container">
-          <SearchForm onSearch={handleSearch} isLoading={isLoading} />
+    if (!hotel) return <div className="loading">Yükleniyor...</div>;
 
-          {hasSearched && (
-            <div className="search-results">
-              <div className="results-header">
-                <div className="results-info">
-                  {isLoading ? (
-                    <div className="loading-message">
-                      <span className="spinner-small"></span>
-                      Oteller aranıyor...
+    return (
+        <div className="app">
+            <div className="auth-header">
+                <div className="auth-container">
+                    <div className="auth-brand">
+                        <h2>🏨 {hotel.name}</h2>
                     </div>
-                  ) : (
-                    <h2>
-                      {searchResults.length} otel bulundu
-                    </h2>
-                  )}
+                    <div className="auth-actions">
+                        {!user ? (
+                            <div className="auth-buttons">
+                                <button onClick={handleLoginClick} className="btn-auth">
+                                    Giriş Yap
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="user-panel-header">
+                                <div className="profile-avatar">
+                                    {user.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="profile-details">
+                                    <h4>{user.name}</h4>
+                                    <span className="user-role">{user.role === 'admin' ? 'Yönetici' : 'Kullanıcı'}</span>
+                                </div>
+                                <div className="user-actions">
+                                    {user.role === 'admin' && (
+                                        <button onClick={() => setShowAdminPanel(true)} className="btn-small admin-btn">
+                                            Admin Panel
+                                        </button>
+                                    )}
+                                    <button onClick={logout} className="btn-small logout-btn">
+                                        Çıkış
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
+            </div>
 
-                {!isLoading && searchResults.length > 0 && (
-                  <div className="sort-controls">
-                    <select
-                      value={searchFilters.sortBy}
-                      onChange={(e) => handleFilterChange({
-                        ...searchFilters,
-                        sortBy: e.target.value as SearchFilters['sortBy']
-                      })}
-                      className="sort-select"
-                    >
-                      <option value="price">Fiyata göre</option>
-                      <option value="rating">Yıldıza göre</option>
-                      <option value="name">İsme göre</option>
-                    </select>
-
-                    <button
-                      onClick={() => handleFilterChange({
-                        ...searchFilters,
-                        sortOrder: searchFilters.sortOrder === 'asc' ? 'desc' : 'asc'
-                      })}
-                      className="sort-direction"
-                    >
-                      {searchFilters.sortOrder === 'asc' ? '↑' : '↓'}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className="results-grid">
-                {isLoading ? (
-                  // Loading skeleton
-                  Array.from({ length: 3 }).map((_, index) => (
-                    <div key={index} className="hotel-card-skeleton">
-                      <div className="skeleton-image"></div>
-                      <div className="skeleton-content">
-                        <div className="skeleton-line wide"></div>
-                        <div className="skeleton-line"></div>
-                        <div className="skeleton-line narrow"></div>
-                      </div>
+            <div className="container">
+                {!user ? (
+                    <div className="login-required">
+                        <div className="login-prompt">
+                            <h2>Rezervasyon Sistemi</h2>
+                            <p>Oda müsaitlik durumunu görmek ve rezervasyon yapmak için giriş yapmanız gerekmektedir.</p>
+                            <button onClick={handleLoginClick} className="btn-login-large">
+                                Giriş Yap
+                            </button>
+                        </div>
                     </div>
-                  ))
-                ) : searchResults.length > 0 ? (
-                  searchResults.map((result) => (
-                    <HotelCard
-                      key={result.hotel.id}
-                      result={result}
-                      onSelect={handleHotelSelect}
-                    />
-                  ))
                 ) : (
-                  <div className="no-results">
-                    <div className="no-results-icon">🏨</div>
-                    <h3>Uygun otel bulunamadı</h3>
-                    <p>
-                      Seçtiğiniz tarihler ve misafir sayısı için uygun otel bulunmamaktadır.
-                      Lütfen farklı tarihler deneyiniz veya arama kriterlerinizi değiştiriniz.
-                    </p>
-                  </div>
+                    <>
+                        {/* Otel Bilgileri */}
+                        <section className="hotel-info">
+                            <h1>{hotel.name}</h1>
+                            <p>{hotel.description}</p>
+                            <p><strong>Toplam Oda Sayısı:</strong> {hotel.totalRooms}</p>
+                        </section>
+
+                        {/* Tarih Seçimi */}
+                        <section className="date-selection">
+                            <h2>Rezervasyon Tarihleri</h2>
+                            <div className="date-inputs">
+                                <div className="input-group">
+                                    <label htmlFor="checkin">Giriş Tarihi</label>
+                                    <input
+                                        type="date"
+                                        id="checkin"
+                                        value={selectedDateRange.checkIn}
+                                        onChange={(e) => handleDateRangeChange(e.target.value, selectedDateRange.checkOut)}
+                                        min={new Date().toISOString().split('T')[0]}
+                                    />
+                                </div>
+                                <div className="input-group">
+                                    <label htmlFor="checkout">Çıkış Tarihi</label>
+                                    <input
+                                        type="date"
+                                        id="checkout"
+                                        value={selectedDateRange.checkOut}
+                                        onChange={(e) => handleDateRangeChange(selectedDateRange.checkIn, e.target.value)}
+                                        min={selectedDateRange.checkIn || new Date().toISOString().split('T')[0]}
+                                    />
+                                </div>
+                                <button 
+                                    onClick={handleReservation}
+                                    className="search-btn"
+                                    disabled={!selectedDateRange.checkIn || !selectedDateRange.checkOut}
+                                >
+                                    Rezervasyon Yap
+                                </button>
+                            </div>
+                            {selectedDateRange.checkIn && selectedDateRange.checkOut && (
+                                <div className="nights-info">
+                                    {Math.ceil((new Date(selectedDateRange.checkOut).getTime() - new Date(selectedDateRange.checkIn).getTime()) / (1000 * 60 * 60 * 24))} gece konaklama
+                                </div>
+                            )}
+                        </section>
+
+                        {/* Rezervasyon Sonucu */}
+                        {reservationResult && (
+                            <section className="reservation-result">
+                                <div className={`result-message ${reservationResult.includes('başarıyla') ? 'success' : 'error'}`}>
+                                    <p>{reservationResult}</p>
+                                </div>
+                            </section>
+                        )}
+
+                        {/* Müsaitlik Takvimi */}
+                        <section className="availability-section">
+                            <h2>Müsaitlik Durumu (Gelecek 30 Gün)</h2>
+                            <div className="availability-grid">
+                                {availability.map((date) => (
+                                    <div key={date.date} className={`availability-card ${date.isAvailable ? 'available' : 'not-available'}`}>
+                                        <div className="date">{formatDate(date.date)}</div>
+                                        <div className="status">
+                                            {date.isAvailable ? (
+                                                <span className="available-text">
+                                                    ✓ {date.roomsAvailable} oda müsait
+                                                </span>
+                                            ) : (
+                                                <span className="not-available-text">
+                                                    ✗ Dolu
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    </>
                 )}
-              </div>
             </div>
-          )}
 
-          {!hasSearched && (
-            <div className="welcome-section">
-              <div className="welcome-content">
-                <h2>İdeal otelinizi bulun</h2>
-                <p>
-                  ElektraWeb ile dünyanın her yerinden binlerce otel arasından
-                  size en uygun olanını seçin. En iyi fiyatlar garantili!
-                </p>
-                <div className="features">
-                  <div className="feature">
-                    <span className="feature-icon">💰</span>
-                    <span>En iyi fiyat garantisi</span>
-                  </div>
-                  <div className="feature">
-                    <span className="feature-icon">⭐</span>
-                    <span>Gerçek müşteri değerlendirmeleri</span>
-                  </div>
-                  <div className="feature">
-                    <span className="feature-icon">📞</span>
-                    <span>7/24 müşteri desteği</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
+            {showAuthModal && (
+                <AuthForm onClose={() => setShowAuthModal(false)} />
+            )}
 
-      <footer className="app-footer">
-        <div className="container">
-          <p>&copy; 2025 ElektraWeb Hotels. Tüm hakları saklıdır.</p>
+            {showAdminPanel && (
+                <AdminPanel onClose={() => setShowAdminPanel(false)} />
+            )}
         </div>
-      </footer>
-    </div>
-  );
+    );
 }
 
 export default App;

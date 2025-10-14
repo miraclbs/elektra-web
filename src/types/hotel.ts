@@ -83,6 +83,20 @@ export interface Offer {
     currency: string;
 }
 
+// Yeni basit rezervasyon tipi
+export interface BookingData {
+    roomId: string;
+    checkIn: string;
+    checkOut: string;
+    nights: number;
+    totalPrice: number;
+    guestInfo: {
+        name: string;
+        email: string;
+        phone: string;
+    };
+}
+
 export interface SearchParams {
     destination: string;
     checkIn: string;
